@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101322">
+  <meta name="description" content="Mobile-friendly video downloader demo">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="stylesheet" href="/static/style.css">
+  <title>ClipFetch — Video Downloader</title>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand-mark">C</div>
+      <div>
+        <p class="eyebrow">VIDEO TOOLKIT</p>
+        <h1>ClipFetch</h1>
+      </div>
+      <span class="server-pill"><span></span> Server ready</span>
+    </header>
+
+    <section class="hero">
+      <div class="hero-tag">SIMPLE · FAST · MOBILE</div>
+      <h2>Your video.<br><span>One playable file.</span></h2>
+      <p>Choose a supported resolution and receive one MP4 with video and audio merged on the server.</p>
+      <div class="hero-art" aria-hidden="true">
+        <div class="orb orb-one"></div><div class="orb orb-two"></div>
+        <div class="play-card"><div class="play-triangle"></div><div class="sound-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+        <div class="floating-chip">MP4 <b>↗</b></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <label for="videoUrl">Video URL</label>
+      <div class="url-box">
+        <span class="link-icon">↗</span>
+        <input id="videoUrl" type="url" placeholder="Paste YouTube video link…" autocomplete="url">
+        <button id="clearBtn" class="clear-btn" type="button" aria-label="Clear URL">×</button>
+      </div>
+      <button id="inspectBtn" class="primary" type="button"><span>Find resolutions</span><span>→</span></button>
+      <p class="hint">Use only videos you own or are authorized to download.</p>
+    </section>
+
+    <section id="videoPanel" class="panel video-panel hidden">
+      <div class="video-meta">
+        <img id="thumbnail" alt="" class="thumbnail hidden">
+        <div><p class="eyebrow">VIDEO SELECTED</p><h3 id="videoTitle">Video title</h3></div>
+      </div>
+      <label for="quality">Resolution</label>
+      <select id="quality"></select>
+      <button id="downloadBtn" class="primary" type="button"><span>Download MP4 with audio</span><span>↓</span></button>
+      <p class="hint">Video and audio are merged on the hosting server. Keep this page open while the file is prepared.</p>
+    </section>
+
+    <div id="status" class="status hidden" role="status" aria-live="polite"></div>
+
+    <section class="feature-grid">
+      <article><div class="feature-icon">♫</div><h3>Audio included</h3><p>Server merges separate streams into one file.</p></article>
+      <article><div class="feature-icon">▣</div><h3>Resolution choices</h3><p>Choose from available standard quality limits.</p></article>
+      <article><div class="feature-icon">↯</div><h3>Phone-friendly</h3><p>Use from your browser without installing FFmpeg on your phone.</p></article>
+    </section>
+    <footer><span>ClipFetch · Demo project</span><span>Use responsibly</span></footer>
+  </main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let currentUrl = "";
+let options = [];
+
+function showStatus(message, type = "info") {
+  $("status").textContent = message;
+  $("status").className = "status " + type;
+}
+function setBusy(button, busy, label) {
+  button.disabled = busy;
+  button.dataset.original = button.dataset.original || button.innerHTML;
+  button.innerHTML = busy ? `<span class="spinner"></span><span>${label}</span>` : button.dataset.original;
+}
+$("clearBtn").addEventListener("click", () => {
+  $("videoUrl").value = "";
+  $("videoUrl").focus();
+  $("videoPanel").classList.add("hidden");
+  $("status").classList.add("hidden");
+});
+$("inspectBtn").addEventListener("click", async () => {
+  const url = $("videoUrl").value.trim();
+  if (!url) return showStatus("Paste a video URL first.", "error");
+  currentUrl = url;
+  setBusy($("inspectBtn"), true, "Checking video…");
+  $("status").classList.add("hidden");
+  try {
+    const response = await fetch("/api/info", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({url})
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "Could not inspect this video.");
+    $("videoTitle").textContent = data.title || "Video";
+    if (data.thumbnail) {
+      $("thumbnail").src = data.thumbnail;
+      $("thumbnail").classList.remove("hidden");
+    } else {
+      $("thumbnail").classList.add("hidden");
+    }
+    options = data.options || [];
+    $("quality").innerHTML = "";
+    options.forEach((option) => {
+      const el = document.createElement("option");
+      el.value = option.height;
+      el.textContent = option.height === 0 ? "Best available quality" :
+        `${option.label}${option.exact ? "" : " · best below this limit"}`;
+      $("quality").appendChild(el);
+    });
+    const best = document.createElement("option");
+    best.value = 0;
+    best.textContent = "Best available quality";
+    if (!options.some(o => o.height === 0)) $("quality").appendChild(best);
+    $("videoPanel").classList.remove("hidden");
+    showStatus("Video found. Choose a quality and download.", "success");
+  } catch (error) {
+    showStatus(error.message || "Something went wrong.", "error");
+  } finally {
+    setBusy($("inspectBtn"), false);
+  }
+});
+$("downloadBtn").addEventListener("click", async () => {
+  if (!currentUrl) return showStatus("Find a video first.", "error");
+  const height = Number($("quality").value || 0);
+  setBusy($("downloadBtn"), true, "Preparing MP4…");
+  showStatus("Downloading and merging video + audio on the server. This can take a while.", "info");
+  try {
+    const response = await fetch("/api/download", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({url: currentUrl, height})
+    });
+    if (!response.ok) {
+      let message = "Download failed.";
+      try { const data = await response.json(); message = data.detail || message; } catch {}
+      throw new Error(message);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = match ? match[1] : "video.mp4";
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename.toLowerCase().endsWith(".mp4") ? filename : filename + ".mp4";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    showStatus("Your file is ready. Open the downloaded MP4; it should contain both video and audio.", "success");
+  } catch (error) {
+    showStatus(error.message || "Download failed.", "error");
+  } finally {
+    setBusy($("downloadBtn"), false);
+  }
+});
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  // The app remains usable online; downloading requires a network connection.
+}
+</script>
+</body>
+</html>
