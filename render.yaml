@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: hosted-video-downloader
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: MAX_CONCURRENT_JOBS
+        value: 1
+      - key: MAX_VIDEO_MINUTES
+        value: 30
