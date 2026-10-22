@@ -1,0 +1,9 @@
+{
+  "name": "ClipFetch Video Downloader",
+  "short_name": "ClipFetch",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101322",
+  "theme_color": "#101322",
+  "description": "Mobile-friendly hosted video downloader demo"
+}
